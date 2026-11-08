@@ -1,0 +1,11 @@
+cff-version: 1.2.0
+message: "If you use Quarterwatt, please cite the software and the data version you used (data/panel/VERSION.json)."
+title: "Quarterwatt: a reproducible data lake for European and Turkish electricity markets"
+type: software
+authors:
+  - family-names: "Basturk"
+    given-names: "Serhan"
+version: "1.0.0"
+date-released: "2026-11-08"
+license: MIT
+keywords: [electricity markets, ENTSO-E, day-ahead prices, balancing, data pipeline, energy economics]
