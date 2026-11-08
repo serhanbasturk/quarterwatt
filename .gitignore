@@ -1,0 +1,14 @@
+# data never goes into the repository (licences: script, not data)
+Quarterwatt/
+*.parquet
+*.csv
+!docs/**/*.csv
+# credentials
+.env
+*.secret
+secrets*.json
+# python / jupyter
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+.venv/

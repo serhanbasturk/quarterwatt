@@ -1,0 +1,17 @@
+name: tests
+on: [push, pull_request]
+jobs:
+  offline-tests:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: pip install -r requirements.txt pyflakes
+      - run: pip install . && python -c "import quarterwatt as qw; print(qw.CODE_VERSION)"
+      - run: python -m pyflakes quarterwatt.py tests/run_tests.py
+      - run: python tests/run_tests.py

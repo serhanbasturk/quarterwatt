@@ -1,0 +1,8 @@
+{
+  "title": "Quarterwatt: a reproducible data lake for European and Turkish electricity markets",
+  "upload_type": "software",
+  "description": "Quarterwatt is a Python module that builds and maintains a harmonised, quality-checked data lake of electricity-market data for 34 European bidding zones and Türkiye from 2015 onwards: day-ahead, intraday-auction, imbalance and balancing-energy prices (converted to EUR), load, generation by technology, forecasts, cross-border flows, reserve markets, weather and reference data, in 15-minute and hourly resolution. The repository contains code only; users download the data with their own API keys.",
+  "creators": [{ "name": "Basturk, Serhan" }],
+  "license": "mit",
+  "keywords": ["electricity market", "ENTSO-E", "day-ahead prices", "balancing energy", "energy data", "data pipeline", "Python"]
+}
