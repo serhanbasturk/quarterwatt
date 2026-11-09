@@ -1,6 +1,6 @@
 # Quarterwatt Handbook
 
-*For students, thesis writers and researchers who work with Quarterwatt data. Version 1.1 (November 2026).*
+*For students, thesis writers and researchers who work with Quarterwatt data. Version 1.2 (November 2026).*
 
 ---
 
@@ -161,7 +161,7 @@ Quarterwatt/
 | `.rejected` | The source refuses the request (HTTP 400). The file holds the server's reason. It is not asked again (`RETRY_REJECTED = True` asks again). |
 | `.checked` | A recent month was checked but had no data yet. It is asked again at the next monthly run. |
 
-Do not edit files in `raw/` by hand. If something looks wrong, run `qw.clean_storage()`. It only *lists* unused items until you call it with `delete=True`.
+Do not edit files in `raw/` by hand. If something looks wrong, run `qw.clean_storage()`. It only *lists* unused items until you call it with `delete=True`. Your own folders in `Quarterwatt/` (for example `analysis/`) are never deleted.
 
 ---
 

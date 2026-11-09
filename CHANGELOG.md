@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.2 (2026-11-09)
+
+* `clean_storage()` no longer deletes folders in `Quarterwatt/` that Quarterwatt did not create (for example your own `analysis/` folder); it only names them.
+
 ## 1.1 (2026-11-09)
 
 Fixes from an external review of the data lake. No re-download is needed: run `qw.finalize(["DE"])` once (offline rebuild of Germany, then audit and panel).

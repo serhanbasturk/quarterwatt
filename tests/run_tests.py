@@ -41,8 +41,9 @@ TESTS = [
    "R9 zone after status: BE Europe/Berlin", "R9 offline undownloaded: (None, None) | folder created: False",
    "R10 wrong hours with spike: 0 | to: 2021-05-10", "R11 BGN check: True", "R12 months without rate: [36]", "R13 failures kept: 1"]),
  ("clean_storage: only unused items, switches off, .bak restore", "test_clean.py", "", [
-   "PLAN: ['archive', 'data/zones/DE_Germany/diagnose_output.txt', 'data/zones/DE_Germany/raw/Net_Position_old', 'data/zones/DE_Germany/raw/P_DA/2016-01.parquet.bak', 'data/zones/XX_Nowhere']",
-   "UNCHANGED BEFORE DELETE: True", "AFTER: weather kept True | P_DA kept True | restored True | archive gone True | audit kept True | bak removed True",
+   "kept (your own entries in Quarterwatt/, never deleted): analysis, archive",
+   "PLAN: ['data/zones/DE_Germany/diagnose_output.txt', 'data/zones/DE_Germany/raw/Net_Position_old', 'data/zones/DE_Germany/raw/P_DA/2016-01.parquet.bak', 'data/zones/XX_Nowhere']",
+   "UNCHANGED BEFORE DELETE: True", "AFTER: weather kept True | P_DA kept True | restored True | own folders kept True | audit kept True | bak removed True",
    "SWITCH RESTORED: False"]),
  ("secrets, balancing energy, IDA2/3, generation-forecast fallback, licences, reference data", "test_sources.py", "", [
    "S1 key from env: True | no credentials in code: True", "S1 ntp error: True", "S1 NTP datasets still registered: True",
@@ -66,7 +67,7 @@ TESTS = [
    "K3 utc steps: [Timedelta('0 days 00:15:00')] | midnight value: 0.0 | IP2: 3.5", "summer 00:00 local = row of 23:00 UTC+1: 92.0",
    "K4 2017 n: {'P1': 35039, 'P2': 35040} | unique: True | tz: Europe/Berlin | utc steps: [Timedelta('0 days 00:15:00')]",
    "K5 rebuilt: True 4",
-   "K7 version: 1.1 | no credentials: True"]),
+   "K7 version: 1.2 | no credentials: True"]),
  ("v1.1: regelleistung harmonisation, quarter-hour panel indicators, dictionary units and licences", "test_v11.py", "", [
    "H1 old per hour: [np.float64(10.0)] | new: [np.float64(12.0)] | raw kept: True",
    "H2 before: 15.0 | DST 00-04 (3 h): 20.0 | after German end: 20.0",
@@ -75,7 +76,7 @@ TESTS = [
    "H3 unknown licences: [] | empty units: []",
    "H4 Oct neg hours hourly / qh: 0 7.75 | spread hourly / qh: 55.0 220.0", "H4 without p15 no qh cols: True",
    "H5 raw tables: [['DE', 'raw_combined/RL_aFRR.parquet', 'regelleistung.net - derived only, TSO consent required']]",
-   "H5 timestamp listed: False | qh cols: True | DE Oct qh neg: 7.75", "H6 version: 1.1"]),
+   "H5 timestamp listed: False | qh cols: True | DE Oct qh neg: 7.75", "H6 version: 1.2"]),
  ("resume after a disconnect (zones and recent months)", "test_resume.py", "", [
    "T1 first run calls > 50: True | state: ['BE', 'NL'] True", "T2 second run calls: 0",
    "T3 resume NL calls (smoke test only): 1 | NL back in state: True", "T4 .empty for recent months: 0 | .checked: True",

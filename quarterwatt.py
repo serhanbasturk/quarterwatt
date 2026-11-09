@@ -1,5 +1,5 @@
 # =============================================================================
-#  Quarterwatt  v1.1  –  European (+ Türkiye) electricity data lake
+#  Quarterwatt  v1.2  –  European (+ Türkiye) electricity data lake
 # =============================================================================
 #  Choose the countries with COUNTRIES = [...] in the CONFIG section
 #  (8 core countries, 26 further bidding zones, Türkiye). Processed one after another,
@@ -114,7 +114,7 @@ RESUME_HOURS = 20                    # restart after a disconnect: recent months
 # ENTSO-E has NO German imbalance prices after 2022-06-21.
 # Free registration: https://api-portal.netztransparenz.de -> create a client
 # -> paste Client-ID / Client-Secret here. Empty = module is skipped.
-CODE_VERSION = "1.1"
+CODE_VERSION = "1.2"
 
 
 def _read_json(path):
@@ -3799,18 +3799,19 @@ def _all_caches(code):
 def clean_storage(delete=False):
     """Lists (delete=False) or removes (delete=True) everything in Quarterwatt/
     that the code no longer uses:
-      * entries in the main folder outside the standard layout (see README)
       * zone folders of unknown zones, files/folders in a zone besides raw/ output/
       * raw/<cache> folders no data set of that zone uses (old cache versions)
       * *.bak files left by an interrupted gap re-fetch (restored if the
         original file is missing, otherwise removed)
-    Raw data in use, outputs, audit, panel and fx rates are never touched."""
+    Raw data in use, outputs, audit, panel and fx rates are never touched.
+    Folders and files in the main folder that Quarterwatt did not create
+    (e.g. your own analysis/ folder) are only named, never deleted."""
     import shutil
     root = root_dir()
     plan = []                                              # (path, reason)
-    for e in sorted(os.listdir(root)):
-        if e not in ROOT_ENTRIES:
-            plan.append((os.path.join(root, e), "not part of the layout"))
+    own = [e for e in sorted(os.listdir(root)) if e not in ROOT_ENTRIES]
+    if own:
+        print(f">>> kept (your own entries in {os.path.basename(root)}/, never deleted): {', '.join(own)}")
     zones_dir = os.path.join(root, "data", "zones")
     known = {zone_folder_name(c): c for c in ALL_ZONES}
     restore = []

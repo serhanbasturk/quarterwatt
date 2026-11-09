@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "quarterwatt"
-version = "1.1"
+version = "1.2"
 description = "Reproducible data lake for European and Turkish electricity markets, in quarter-hour detail from 2015"
 readme = "README.md"
 license = "MIT"
