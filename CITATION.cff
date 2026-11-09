@@ -5,10 +5,10 @@ type: software
 authors:
   - family-names: "Basturk"
     given-names: "Serhan"
-version: "1.0"
+version: "1.1"
 doi: "10.5281/zenodo.24054659"
 repository-code: "https://github.com/serhanbasturk/quarterwatt"
 url: "https://quarterwatt.com"
-date-released: "2026-11-08"
+date-released: "2026-11-09"
 license: MIT
 keywords: [electricity markets, ENTSO-E, day-ahead prices, balancing, data pipeline, energy economics]

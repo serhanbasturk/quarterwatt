@@ -1,6 +1,6 @@
 # Quarterwatt Handbook
 
-*For students, thesis writers and researchers who work with Quarterwatt data. Version 1.0 (November 2026).*
+*For students, thesis writers and researchers who work with Quarterwatt data. Version 1.1 (November 2026).*
 
 ---
 
@@ -144,7 +144,8 @@ Quarterwatt/
 │   ├── panel/                     ← start here
 │   │   ├── panel_core_1h.parquet  all zones, hourly, core columns, long format (UTC)
 │   │   ├── panel_monthly.csv, panel_yearly.csv
-│   │   ├── zones.csv, data_dictionary.csv (meaning, unit, licence of every column)
+│   │   ├── zones.csv, data_dictionary.csv (meaning, unit, licence of every column),
+│   │   │   data_dictionary_raw.csv (the raw-only tables of output/raw_combined)
 │   │   └── VERSION.json           data version (YYYY.MM), code version, data_until
 │   └── reference/                 levies, standard load profiles, SME profiles
 ├── audit/                         audit_summary.csv, audit_issues.csv, run_state.json
@@ -204,20 +205,21 @@ Every conversion is logged in `manifest.json` → `currency_conversions` and rep
 
 ## 7. Variable catalogue
 
-Every column of every zone is documented in `data/panel/data_dictionary.csv`, with meaning, unit and licence. The most important families:
+Every column of every zone is documented in `data/panel/data_dictionary.csv`, with meaning, unit and licence. The raw-only tables (`output/raw_combined/`: regelleistung.net, ENTSO-E reserves, Eurostat, FRED, installed capacity) are listed in `data_dictionary_raw.csv`. The most important families:
 
 ### Prices (EUR/MWh)
 
 | Column | Meaning |
 |---|---|
-| `P_DA` | Day-ahead price of the zone (SDAC; for TR the EPİAŞ PTF) |
+| `P_DA` | Day-ahead price of the zone (SDAC; for TR the EPİAŞ PTF). **IT = IT_NORD**, not the national PUN. **AT** until 30.09.2018 = the common DE-AT-LU price (see § 8, comparability). |
 | `P_DA_<ZONE>` | Day-ahead price of a neighbouring zone, e.g. `P_DA_FR` in the DE table |
-| `P_IDA1`, `P_IDA2`, `P_IDA3` | Intraday auction prices (IDA1 from mid-2024; IDA2/3 from 13.06.2024) |
+| `P_IDA1`, `P_IDA2`, `P_IDA3` | Intraday auction prices (IDA1 from mid-2024; IDA2/3 from 13.06.2024). ENTSO-E serves them only for some zones (currently ES). Continuous intraday prices are not included; for Germany use `P_ID_AEP`. |
 | `P_Imbalance` | **One continuous imbalance price series.** DE: reBAP (netztransparenz), BE: Elia, TR: SMF, otherwise ENTSO-E |
 | `P_Imb_Long`, `P_Imb_Short` | ENTSO-E imbalance prices for surplus and deficit. In single-price systems only `P_Imb_Long` is filled. |
 | `P_BalE_<aFRR\|mFRR>_<Up\|Down>` | Price of **activated** balancing energy (ENTSO-E 17.1.F), from 2019. It exists only in intervals with activation. A missing value means "no activation", **not zero**. |
 | `P_reBAP_*`, `P_ID_AEP` | Germany: official reBAP and ID-AEP (netztransparenz) |
-| `Res_*`, `RL_*` | Reserve capacity prices and volumes (ENTSO-E; DE also regelleistung.net) |
+| `Res_*`, `RL_*` | Reserve capacity prices and volumes (raw tables; ENTSO-E until 2023-06; DE also regelleistung.net). Capacity prices are per MW **and product** (EUR/MW) or per MW **and hour** (EUR/MW/h): the unit is in the column name. |
+| `RL_CapPrice_<FCR\|aFRR\|mFRR>_<Sym\|Up\|Down>` | **Use this for analyses.** regelleistung.net capacity price in EUR/MW/h, harmonised over the format changes (aFRR/mFRR: EUR/MW per product until 2021, EUR/MW/h after; FCR: German settlement column empty since 2022, cross-border value used). aFRR/mFRR = average price (pay-as-bid), FCR = settlement price. Annual revenue of 1 MW sold only in that product = mean × 8,760 h. |
 
 ### Load and generation (MW)
 
@@ -236,14 +238,14 @@ Every column of every zone is documented in `data/panel/data_dictionary.csv`, wi
 |---|---|
 | `Flow_Import_<ZONE>`, `Flow_Export_<ZONE>` | Physical cross-border flows |
 | `Net_Import_Physical`, `N_Borders_Reporting` | Imports − exports over all borders; number of borders with data |
-| `Net_Position` | Day-ahead net position (positive = export) |
-| `Imbalance_Volume_Total` | Signed system imbalance |
+| `NetPosition_DA` | Day-ahead net position (positive = export) |
+| `Imb_Volume_Total` | Signed system imbalance |
 
 ### Context
 
 | Column | Meaning |
 |---|---|
-| `WX_Temp_C`, `WX_GHI_Wm2`, `WX_Wind100m_kmh`, `WX_Cloud_pct` | Population-weighted ERA5 weather |
+| `WX_Temp_C`, `WX_GHI_Wm2`, `WX_Wind100m_kmh`, `WX_Cloud_pct` | Population-weighted ERA5 weather (weighted by city population, **not** by the PV or wind fleet: for renewable output use `Gen_Solar`, `Gen_Wind_*`) |
 | `ES_*`, `ESC_*` | Eurostat industrial prices by consumption band, and price components (half-yearly) |
 | `Gas_*`, `Coal_*`, `Brent`, `USD_per_EUR` | Monthly fuel prices (FRED/IMF) |
 | `TR_*` | Türkiye: balancing instructions (YAL/YAT), imbalance quantities, FCR/aFRR, YEKDEM |
@@ -252,9 +254,9 @@ Every column of every zone is documented in `data/panel/data_dictionary.csv`, wi
 
 | Column | Meaning |
 |---|---|
-| `Flag_Negative_DA` | 1 if the day-ahead price is below 0 |
+| `Flag_Negative_DA` | 1 if the day-ahead price is below 0. In the hourly table this is the **hourly mean** price; since the 15-min day-ahead MTU (10/2025) use the 15-min table for quarter-hour detail. |
 | `Flag_P_DA_Filled` | Share of the interval whose price was filled from the last published value (short gaps of ≤ 8 h, ENTSO-E curve type A03) |
-| `Is_Cheapest_Energy_Window` | 1 if the hour is among the cheapest 15 % of its day |
+| `Is_Cheapest_Energy_Window` | 1 if the interval is among the cheapest 15 % of its day (hourly table: of the hourly means) |
 | `Is_Weekend`, `Is_Public_Holiday`, `Hour`, `Weekday`, `Month` | Calendar (local time) |
 
 <a id="co2"></a>
@@ -320,6 +322,26 @@ The results are in `audit/audit_summary.csv` and `audit/audit_issues.csv`.
 * **Activated balancing volumes (ENTSO-E 17.1.E):** no longer offered by the API.
 * **DE:** ENTSO-E has no German imbalance prices after 2022-06. Use `P_Imbalance` (reBAP, netztransparenz).
 * **Balancing energy prices:** some months are refused by ENTSO-E (HTTP 400). They are listed in `manifest.json` → `rejected_by_source`.
+* **ENTSO-E reserve prices (`Res_*`):** end 2023-06. For Germany use the regelleistung.net tables.
+* **BG:** no imbalance prices on ENTSO-E.
+
+### Comparability: structural breaks and definitions
+
+The audit checks each zone for data errors. It does not make zones or years comparable with each other; for that, take the following into account.
+
+| Topic | What to do |
+|---|---|
+| **DE-AT-LU** | Until 30.09.2018 Germany, Austria and Luxembourg formed one price zone. The AT price is identical to DE in that period: do not count AT as a separate observation in cross-zone regressions before 10/2018. |
+| **Net imports** | `Net_Import_Physical` sums the borders that report data. The set changes: DE-AT is an internal border before 10/2018, NO_2-DE (NordLink) exists from 2020. Check `N_Borders_Reporting` before using trends; early DE net exports look too low (2015: −26.7 TWh). |
+| **IT** | `P_DA` is IT_NORD, not the national PUN. |
+| **Imbalance prices** | `P_Imbalance` is one series per zone, but the definitions differ: DE reBAP, BE Elia (column change at MARI, 22.05.2024), TR SMF, otherwise ENTSO-E (single or dual price, see the limits above). Compare levels across zones only with care. |
+| **15-min prices** | Since 01.10.2025 the hourly table averages four quarter-hour prices; spreads and negative-price counts are smaller than in the 15-min table (DE: daily spread about −15 %). The panel therefore has both `neg_price_hours` / `daily_spread_mean` (hourly) and `neg_price_qh_hours` / `daily_spread_qh_mean` (15-min). Battery and 15-min flexibility analyses need the 15-min table. |
+| **CO₂** | Average intensity of **domestic generation** with fixed factors per technology; imports and `Gen_Other` are not included. It is not a marginal emission factor. |
+| **Partial years** | The current year ends at the last download. Label it "YTD" in tables. |
+
+### Provenance
+
+`data/panel/VERSION.json` records the data version and the code version that built the panel. Cite both, together with the GitHub release of that code version (see § 11). After a code update, run `qw.finalize()` once so that the stamp matches the code.
 
 ---
 
@@ -421,7 +443,7 @@ The column `licence` in `data_dictionary.csv` gives this per variable.
 **Cite three things:**
 1. the original data sources;
 2. Quarterwatt: Basturk, S. (2026), Zenodo, https://doi.org/10.5281/zenodo.24054659 (see `CITATION.cff`);
-3. the **data version** from `data/panel/VERSION.json`, e.g. *"Quarterwatt data version 2026.11, code 1.0"*.
+3. the **data version** from `data/panel/VERSION.json`, e.g. *"Quarterwatt data version 2026.11, code 1.1"*.
 
 ---
 

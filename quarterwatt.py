@@ -1,5 +1,5 @@
 # =============================================================================
-#  Quarterwatt  v1.0  –  European (+ Türkiye) electricity data lake
+#  Quarterwatt  v1.1  –  European (+ Türkiye) electricity data lake
 # =============================================================================
 #  Choose the countries with COUNTRIES = [...] in the CONFIG section
 #  (8 core countries, 26 further bidding zones, Türkiye). Processed one after another,
@@ -114,7 +114,7 @@ RESUME_HOURS = 20                    # restart after a disconnect: recent months
 # ENTSO-E has NO German imbalance prices after 2022-06-21.
 # Free registration: https://api-portal.netztransparenz.de -> create a client
 # -> paste Client-ID / Client-Secret here. Empty = module is skipped.
-CODE_VERSION = "1.0"
+CODE_VERSION = "1.1"
 
 
 def _read_json(path):
@@ -1114,6 +1114,50 @@ def parse_rl_xlsx(content, label):
     return wide.sort_index()
 
 
+RL_STAT_ORDER = ("AVERAGE", "SETTLEMENT", "MARGINAL")      # never MIN
+RL_REGION_ORDER = ("GERMANY", "CROSSBORDER", "TOTAL")
+
+
+def harmonise_rl(df, label):
+    """Adds RL_CapPrice_<label>_<dir> in EUR per MW and HOUR to a raw
+    regelleistung.net table. The published format changed twice:
+      * aFRR/mFRR capacity prices were EUR/MW per 4-h product until 2021
+        and EUR/MW/h afterwards, in a differently named column;
+      * the German FCR settlement price column is empty since 2022, the
+        cross-border settlement price (same value before) continues.
+    Order of preference: statistic AVERAGE (pay-as-bid aFRR/mFRR) >
+    SETTLEMENT (FCR) > MARGINAL; region GERMANY > CROSSBORDER > TOTAL.
+    Per-product prices are divided by the product length (4 h, 3 or 5 h on
+    daylight-saving days). Raw columns are kept unchanged."""
+    if df is None or df.empty:
+        return df
+    pre = f"RL_{label}_"
+    dirs = sorted({c[len(pre):].split("_")[0] for c in df.columns
+                   if c.startswith(pre) and "CAPACITY_PRICE" in c})
+    for d in dirs:
+        cols = [c for c in df.columns if c.startswith(f"{pre}{d}_") and "CAPACITY_PRICE" in c]
+        if not cols:
+            continue
+        present = df[cols].notna().any(axis=1)
+        t = pd.Series(df.index[present], index=df.index[present])
+        hrs = ((t.shift(-1) - t).dt.total_seconds() / 3600).reindex(df.index)
+        hrs = hrs.where(hrs.isin([3.0, 4.0, 5.0]), 4.0)
+        out = pd.Series(np.nan, index=df.index)
+        for stat in RL_STAT_ORDER:
+            for reg in RL_REGION_ORDER:
+                for c in cols:
+                    body = c[len(f"{pre}{d}_"):]
+                    if not body.startswith(f"{reg}_") or f"_{stat}" not in body.replace("SETTLEMENTCAPACITY", "_SETTLEMENT_CAPACITY"):
+                        continue
+                    if body.endswith("_EUR_MW_H"):
+                        out = out.fillna(df[c])
+                    elif body.endswith("_EUR_MW"):
+                        out = out.fillna(df[c] / hrs)
+        if out.notna().any():
+            df[f"RL_CapPrice_{label}_{d}"] = out
+    return df
+
+
 def make_rl_fn(product, label):
     def fn(c, area, s, e):
         first = max(s, pd.Timestamp(REGELLEISTUNG_START, tz=TZ))
@@ -1837,7 +1881,7 @@ def fill_a03_price_gaps(df):
     Filled points are flagged in Flag_P_DA_Filled (1) so they can be excluded."""
     if not P.get("entsoe", True):
         return df
-    for col in [c for c in df.columns if c == "P_DA" or (c.startswith("P_DA_") and c != "P_DA_TRY")]:
+    for col in [c for c in df.columns if c == "P_DA" or (c.startswith("P_DA_") and c not in ("P_DA_TRY", "P_DA_USD"))]:
         s = df[col]
         if s.notna().all() or s.notna().sum() == 0:
             continue
@@ -2184,7 +2228,7 @@ def apply_price_bounds(df, log):
     utc = df.index.tz_convert("UTC")
     cap = np.where(utc < HMMCP_CHANGE, 3000.0, 5000.0)
     for col in [c for c in df.columns if c == "P_DA" or (c.startswith("P_DA_")
-                and c not in ("P_DA_TRY",) and "IE" not in c and "GB" not in c)]:
+                and c not in ("P_DA_TRY", "P_DA_USD") and "IE" not in c and "GB" not in c)]:
         bad = (df[col] < -500) | (df[col] > cap)
         n = int(bad.sum())
         if n:
@@ -2232,7 +2276,7 @@ def harmonise_currency(df, log):
                               single_switch=COUNTRY in DA_SINGLE_SWITCH)
     # 2) neighbour prices against the own (euro) price
     if "P_DA" in df.columns:
-        for col in [c for c in df.columns if c.startswith("P_DA_") and c != "P_DA_TRY"]:
+        for col in [c for c in df.columns if c.startswith("P_DA_") and c not in ("P_DA_TRY", "P_DA_USD")]:
             nb = col[5:]
             if nb in DA_DETECT and currency_of(nb):
                 df = _convert(df, col, df["P_DA"], currency_of(nb), "own P_DA", log,
@@ -2636,6 +2680,8 @@ def assemble(active, now):
             manifest["datasets"][d["name"]] = info
             print(f"   {d['name']:24s} EMPTY")
             continue
+        if d["name"].startswith("RL_"):
+            df = harmonise_rl(df, d["name"][3:])
         df.to_parquet(os.path.join(OUT_DIR, "raw_combined", f"{d['name']}.parquet"))
         info.update(rows=len(df), columns=list(df.columns),
                     first=str(df.index.min()), last=str(df.index.max()))
@@ -3281,10 +3327,12 @@ def audit(zones=None):
 #  combined panel
 # --------------------------------------------------------------------------- #
 
-def _monthly(df, code, freq="M"):
+def _monthly(df, code, freq="M", p15=None):
     """Indicators of one zone per local calendar month (freq="M") or year
-    (freq="Y"), always computed from the hourly data (correct min/max/std,
-    load-weighted means)."""
+    (freq="Y"), computed from the hourly data (correct min/max/std,
+    load-weighted means). p15 = the 15-min day-ahead price: adds the
+    quarter-hour indicators neg_price_qh_hours and daily_spread_qh_mean
+    (identical to the hourly ones before the 15-min day-ahead MTU of 10/2025)."""
     m = df.index.tz_localize(None).to_period(freq)
     g = df.groupby(m)
     out = pd.DataFrame(index=g.size().index)
@@ -3303,6 +3351,12 @@ def _monthly(df, code, freq="M"):
         day = df.index.tz_localize(None).normalize()
         spread = p.groupby(day).agg(lambda s: s.max() - s.min() if s.notna().sum() >= 20 else np.nan)
         out["daily_spread_mean"] = spread.groupby(spread.index.to_period(freq)).mean()
+        if p15 is not None and p15.notna().any():
+            m15 = p15.index.tz_localize(None).to_period(freq)
+            out["neg_price_qh_hours"] = (p15 < 0).groupby(m15).sum() * 0.25
+            d15 = p15.index.tz_localize(None).normalize()
+            sp15 = p15.groupby(d15).agg(lambda s: s.max() - s.min() if s.notna().sum() >= 80 else np.nan)
+            out["daily_spread_qh_mean"] = sp15.groupby(sp15.index.to_period(freq)).mean()
         if "Is_Cheapest_Energy_Window" in df.columns:
             out["P_DA_cheapest15_mean"] = p.where(df["Is_Cheapest_Energy_Window"] == 1).groupby(m).mean()
         if "Load_Actual" in df.columns:
@@ -3343,15 +3397,23 @@ def _monthly(df, code, freq="M"):
 COLUMN_DOCS = [  # (prefix or exact name, meaning, unit)  - first match wins
     ("P_DA", "Day-ahead price of the zone (SDAC / EPİAŞ PTF for TR)", "EUR/MWh"),
     ("P_DA_", "Day-ahead price of a neighbouring zone", "EUR/MWh"),
-    ("P_DA_TRY", "Day-ahead price in Turkish lira", "TRY/MWh"),
+    ("P_DA_TRY", "Türkiye day-ahead price PTF in Turkish lira (as published)", "TRY/MWh"),
+    ("P_DA_USD", "Türkiye day-ahead price PTF in US dollar (as published)", "USD/MWh"),
+    ("P_IDM_WAP_TRY", "Türkiye intraday market weighted average price", "TRY/MWh"),
     ("P_IDA", "Intraday auction price", "EUR/MWh"),
     ("P_ID_AEP", "Intraday average price (netztransparenz ID-AEP)", "EUR/MWh"),
     ("P_Imbalance", "Imbalance price, single continuous series (reBAP / Elia / ENTSO-E / SMF)", "EUR/MWh"),
     ("P_reBAP", "German reBAP (netztransparenz)", "EUR/MWh"),
     ("P_Imb_", "Imbalance price from ENTSO-E", "EUR/MWh"),
-    ("P_SMF", "Türkiye system marginal price", "EUR/MWh"),
+    ("P_SMF", "Türkiye system marginal price SMF (converted with the daily PTF EUR/TRY ratio)", "EUR/MWh"),
+    ("P_SMF_TRY", "Türkiye system marginal price SMF in Turkish lira (as published)", "TRY/MWh"),
     ("P_BalE_", "Price of activated balancing energy (ENTSO-E 17.1.F), product and direction in the name", "EUR/MWh"),
-    ("Elia_", "Elia open data (Belgian imbalance)", "EUR/MWh or MW"),
+    ("Elia_", "Elia open data (Belgian imbalance): price or price component", "EUR/MWh"),
+    ("Elia_netregulationvolume", "Elia net regulation volume (NRV)", "MW"),
+    ("Elia_systemimbalance", "Elia system imbalance (SI)", "MW"),
+    ("Elia_ace", "Elia area control error (ACE)", "MW"),
+    ("Elia_alpha", "Elia alpha component of the imbalance price", "EUR/MWh"),
+    ("Elia_alpha_prime", "Elia alpha' component of the imbalance price", "EUR/MWh"),
     ("Load_Actual", "Actual total load", "MW"),
     ("Load_Forecast", "Load forecast", "MW"),
     ("Load_Forecast_Error", "Actual minus day-ahead forecast load", "MW"),
@@ -3372,8 +3434,27 @@ COLUMN_DOCS = [  # (prefix or exact name, meaning, unit)  - first match wins
     ("CO2_Intensity_approx", "Direct CO2 intensity of domestic generation (approx.)", "g/kWh"),
     ("CO2_Intensity_LCA", "Life-cycle CO2 intensity (IPCC AR5 medians)", "g/kWh"),
     ("Imbalance_Vol", "System imbalance volume", "MW"),
+    ("Imb_Volume_Total", "Total system imbalance volume (ENTSO-E 17.1.H)", "MW"),
+    ("NetPosition_DA", "Day-ahead net position (positive = export)", "MW"),
+    ("Solar_Forecast_Error", "Actual minus day-ahead solar forecast", "MW"),
+    ("Solar_Forecast_ID", "Intraday solar forecast", "MW"),
+    ("NRV_Deutschland", "German control-block balance NRV-Saldo (netztransparenz)", "MW"),
+    ("NRV_AEP_Knappheitskomponente", "Scarcity component of the German imbalance price (netztransparenz)", "EUR/MWh"),
+    ("NRV_Srl_Mol_Abweichung", "Flag: aFRR activation deviated from the merit order list (netztransparenz)", "0/1"),
+    ("NRV_Mrl_Mol_Abweichung", "Flag: mFRR activation deviated from the merit order list (netztransparenz)", "0/1"),
+    ("NRV_Operational", "1 = operational (not yet quality-assured) netztransparenz data", "0/1"),
+    ("aFRR_Act_", "Activated aFRR energy per TSO or Germany, positive / negative (netztransparenz)", "MW"),
+    ("aFRR_Act_MOL_Abweichung", "Flag: aFRR activation deviated from the merit order list", "0/1"),
+    ("aFRR_Act_Operational", "1 = operational (not yet quality-assured) netztransparenz data", "0/1"),
+    ("mFRR_Act_", "Activated mFRR energy per TSO or Germany, positive / negative (netztransparenz)", "MW"),
+    ("mFRR_Act_MOL_Abweichung", "Flag: mFRR activation deviated from the merit order list", "0/1"),
+    ("mFRR_Act_Operational", "1 = operational (not yet quality-assured) netztransparenz data", "0/1"),
+    ("FCR_NTP_", "FCR (primary control) per TSO or Germany, positive / negative (netztransparenz)", "MW"),
     ("Res_", "Reserve (balancing) data", "MW or EUR/MW"),
-    ("RL_", "regelleistung.net auction results", "EUR/MW or EUR/MWh"),
+    ("RL_", "regelleistung.net capacity auction result per 4-h product, raw column as published "
+            "(the unit is in the name: EUR_MW = per MW and product, EUR_MW_H = per MW and hour)", "see name"),
+    ("RL_CapPrice_", "regelleistung.net capacity price harmonised over the 2021/22 format changes "
+                     "(see handbook § 7)", "EUR/MW/h"),
     ("NTP_", "netztransparenz.de", "various"),
     ("WX_Temp_C", "Population-weighted air temperature (ERA5)", "°C"),
     ("WX_GHI", "Population-weighted global horizontal irradiation (ERA5)", "W/m²"),
@@ -3386,9 +3467,20 @@ COLUMN_DOCS = [  # (prefix or exact name, meaning, unit)  - first match wins
     ("Brent", "Brent crude (FRED, monthly)", "see name"),
     ("USD_per_EUR", "Exchange rate (FRED)", "USD/EUR"),
     ("TR_", "EPİAŞ (Türkiye) market data", "see name"),
-    ("Flag_Negative_DA", "1 if day-ahead price < 0", "0/1"),
+    ("TR_IMB_", "Türkiye system imbalance quantity (EPİAŞ)", "MWh"),
+    ("TR_YAL_", "Türkiye balancing power market load-up instructions (EPİAŞ)", "MWh"),
+    ("TR_YAT_", "Türkiye balancing power market load-down instructions (EPİAŞ)", "MWh"),
+    ("TR_FCR_Capacity_MW", "Türkiye FCR reserve amount (EPİAŞ)", "MW"),
+    ("TR_aFRR_Capacity_MW", "Türkiye aFRR reserve amount (EPİAŞ)", "MW"),
+    ("TR_FCR_Capacity_Price_EUR", "Türkiye FCR capacity price (EPİAŞ), converted", "EUR/MW"),
+    ("TR_FCR_Capacity_Price_TRY", "Türkiye FCR capacity price (EPİAŞ)", "TRY/MW"),
+    ("TR_aFRR_Capacity_Price_EUR", "Türkiye aFRR capacity price (EPİAŞ), converted", "EUR/MW"),
+    ("TR_aFRR_Capacity_Price_TRY", "Türkiye aFRR capacity price (EPİAŞ)", "TRY/MW"),
+    ("Flag_Negative_DA", "1 if day-ahead price < 0 (hourly table: hourly mean price < 0; "
+                         "since 10/2025 use the 15-min table for quarter-hour detail)", "0/1"),
     ("Flag_P_DA_Filled", "Share of the interval whose P_DA was filled from the last published price (short gaps, curveType A03)", "0-1"),
-    ("Is_Cheapest_Energy_Window", "1 if hour is among the cheapest 15% of the day", "0/1"),
+    ("Is_Cheapest_Energy_Window", "1 if the interval is among the cheapest 15% of the day "
+                                  "(hourly table: of the hourly mean prices)", "0/1"),
     ("Is_", "Calendar flag", "0/1"),
     ("Hour", "Hour of day, local time", ""), ("Weekday", "0 = Monday", ""), ("Month", "Month", ""),
 ]
@@ -3429,6 +3521,15 @@ LICENCE_RULES = [
     ("VRE_", "sum/ratio of ENTSO-E series - aggregated indicators only", False),
     ("Residual_Load", "difference of ENTSO-E series - aggregated indicators only", False),
     ("Flag_", "Quarterwatt derived (CC BY 4.0, cite sources)", True),
+    ("Is_Cheapest_Energy_Window", "Quarterwatt derived from prices (CC BY 4.0, cite sources)", True),
+    ("NRV_", "netztransparenz.de - derived only, TSO consent required", False),
+    ("aFRR_Act_", "netztransparenz.de - derived only, TSO consent required", False),
+    ("mFRR_Act_", "netztransparenz.de - derived only, TSO consent required", False),
+    ("FCR_NTP_", "netztransparenz.de - derived only, TSO consent required", False),
+    ("NetPosition_", "ENTSO-E (check free re-use list) - derived only until verified", False),
+    ("P_IDM_", "EPİAŞ, attribution (to verify)", False),
+    ("P_DA_TRY", "EPİAŞ, attribution (to verify)", False),
+    ("P_DA_USD", "EPİAŞ, attribution (to verify)", False),
     ("Is_", "calendar", True), ("Hour", "calendar", True), ("Weekday", "calendar", True),
     ("Month", "calendar", True),
 ]
@@ -3448,6 +3549,32 @@ def _describe(col):
         if col.startswith(key) and (best is None or len(key) > len(best[0])):
             best = (key, txt, unit)
     return (best[1], best[2]) if best else ("", "")
+
+
+def _raw_dictionary(zinfo):
+    """One row per zone and raw-only table (output/raw_combined, not merged
+    into the zone tables): unit, description, period, columns, licence.
+    Read from each zone's manifest.json."""
+    rows = []
+    for z in zinfo:
+        configure(z["zone"])
+        mf = os.path.join(resolve_base_dir(), "output", "manifest.json")
+        if not os.path.exists(mf):
+            continue
+        with open(mf) as f:
+            m = json.load(f)
+        for name, info in m.get("datasets", {}).items():
+            if info.get("merged_into_master", True) or not info.get("rows"):
+                continue
+            cols = info.get("columns", [])
+            lic, raw_ok = licence_of(cols[0] if cols else name)
+            rows.append({"zone": z["zone"], "table": f"raw_combined/{name}.parquet",
+                         "group": info.get("group", ""), "unit": info.get("unit", ""),
+                         "description": info.get("description", ""),
+                         "first": str(info.get("first", ""))[:10], "last": str(info.get("last", ""))[:10],
+                         "rows": info.get("rows"), "n_columns": len(cols),
+                         "columns": " ".join(cols), "licence": lic, "raw_republishable": raw_ok})
+    return pd.DataFrame(rows) if rows else None
 
 
 @_keeps_zone
@@ -3472,8 +3599,13 @@ def build_panel(zones=None):
         gt = _gen_total(df)
         if gt is not None:
             df["Gen_Total"] = gt
-        monthly.append(_monthly(df, code, "M"))
-        yearly.append(_monthly(df, code, "Y"))
+        p15 = None
+        f15 = path.replace("_1h.parquet", "_15min.parquet")
+        if os.path.exists(f15) and "P_DA" in pq.read_schema(f15).names:
+            p15 = pd.read_parquet(f15, columns=["P_DA"])["P_DA"]
+        monthly.append(_monthly(df, code, "M", p15))
+        yearly.append(_monthly(df, code, "Y", p15))
+        del p15
         # yearly = from monthly sums / hour-weighted means
         h = df[[c for c in PANEL_CORE_COLS if c in df.columns]].astype("float32")
         h.index = h.index.tz_convert("UTC")
@@ -3504,6 +3636,7 @@ def build_panel(zones=None):
     pd.DataFrame(zinfo).to_csv(os.path.join(out, "zones.csv"), index=False)
 
     dd = []
+    colzones.pop("timestamp", None)
     for c in sorted(colzones):
         txt, unit = _describe(c)
         zs = colzones[c]
@@ -3513,6 +3646,9 @@ def build_panel(zones=None):
                    "zones": "ALL" if len(zs) == len(zinfo) else " ".join(zs),
                    "in_core_panel": c in PANEL_CORE_COLS})
     pd.DataFrame(dd).to_csv(os.path.join(out, "data_dictionary.csv"), index=False)
+    raw = _raw_dictionary(zinfo)
+    if raw is not None:
+        raw.to_csv(os.path.join(out, "data_dictionary_raw.csv"), index=False)
 
     print(" " * 40)
     print(f"hourly panel : {len(panel):,} rows x {panel.shape[1]} columns, {panel.zone.nunique()} zones "

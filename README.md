@@ -89,7 +89,7 @@ The data are written to `./Quarterwatt/`.
 python tests/run_tests.py
 ```
 
-There are 21 offline tests, and no API key is needed because every source is simulated. One of them, the API contract test, checks every ENTSO-E request in every zone against the installed `entsoe-py`. Another runs the examples of the handbook, so the documentation stays correct. The suite passes under pandas 2.2, 3.0 and 3.1. GitHub Actions runs the suite on every push.
+There are 22 offline tests, and no API key is needed because every source is simulated. One of them, the API contract test, checks every ENTSO-E request in every zone against the installed `entsoe-py`. Another runs the examples of the handbook, so the documentation stays correct. The suite passes under pandas 2.2, 3.0 and 3.1. GitHub Actions runs the suite on every push.
 
 ## Citation
 

@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.1 (2026-11-09)
+
+Fixes from an external review of the data lake. No re-download is needed: run `qw.finalize(["DE"])` once (offline rebuild of Germany, then audit and panel).
+
+* **regelleistung.net:** new harmonised columns `RL_CapPrice_<FCR|aFRR|mFRR>_<dir>` in EUR/MW/h. They bridge the change of the aFRR/mFRR capacity price unit (EUR/MW per product until 2021, EUR/MW/h after) and the empty German FCR settlement column since 2022. Raw columns are unchanged.
+* **Panel:** quarter-hour indicators `neg_price_qh_hours` and `daily_spread_qh_mean` in `panel_monthly.csv` and `panel_yearly.csv`, computed from the 15-min table (since the 15-min day-ahead MTU the hourly means understate spreads).
+* **Data dictionary:** corrected units (Elia volumes in MW, `P_SMF_TRY` and `P_DA_TRY` in TRY/MWh, `P_DA_USD` in USD/MWh); descriptions and licences for the netztransparenz columns (NRV, activated aFRR/mFRR, FCR), `NetPosition_DA`, `Imb_Volume_Total`, `P_IDM_WAP_TRY` and the EPİAŞ columns; the index column is no longer listed. New `data_dictionary_raw.csv` lists the raw-only tables (regelleistung.net, ENTSO-E reserves, Eurostat, FRED, installed capacity) per zone.
+* **Handbook:** new section on comparability (DE-AT-LU until 09/2018, changing border coverage of net imports, IT = IT_NORD, heterogeneous imbalance definitions, 15-min vs hourly, CO₂ definition, partial years) and on provenance.
+* `P_DA_USD` (TR) is excluded from the neighbour-price rules.
+
 ## 1.0 (2026-11-08) – first public release
 
 * 34 European bidding zones and Türkiye, 2015 onwards, updated monthly.
