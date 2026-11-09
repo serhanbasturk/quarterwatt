@@ -69,7 +69,9 @@ TESTS = [
    "K5 rebuilt: True 4",
    "K7 version: 1.2 | no credentials: True"]),
  ("v1.1: regelleistung harmonisation, quarter-hour panel indicators, dictionary units and licences", "test_v11.py", "", [
-   "H1 old per hour: [np.float64(10.0)] | new: [np.float64(12.0)] | raw kept: True",
+   "H1 old per hour: [10.0] | new: [12.0] | raw kept: True",
+   "H2b DST 00-04 (5 h): 4.0 | per-hour column wins: [7.0] | FCR local price: [20.0, 20.0, 10.0, 20.0] | twice: True | only MIN: []",
+   "H4 hourly era, qh = hourly: True 0.0",
    "H2 before: 15.0 | DST 00-04 (3 h): 20.0 | after German end: 20.0",
    "'Elia_netregulationvolume': 'MW', 'Elia_systemimbalance': 'MW', 'Elia_ace': 'MW', 'Elia_imbalanceprice': 'EUR/MWh'",
    "'P_SMF_TRY': 'TRY/MWh', 'P_SMF': 'EUR/MWh', 'P_DA_TRY': 'TRY/MWh', 'P_DA_USD': 'USD/MWh', 'P_DA_FR': 'EUR/MWh'",

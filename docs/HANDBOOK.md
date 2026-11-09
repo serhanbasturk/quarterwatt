@@ -443,7 +443,7 @@ The column `licence` in `data_dictionary.csv` gives this per variable.
 **Cite three things:**
 1. the original data sources;
 2. Quarterwatt: Basturk, S. (2026), Zenodo, https://doi.org/10.5281/zenodo.24054659 (see `CITATION.cff`);
-3. the **data version** from `data/panel/VERSION.json`, e.g. *"Quarterwatt data version 2026.11, code 1.1"*.
+3. the **data version** from `data/panel/VERSION.json`, e.g. *"Quarterwatt data version 2026.11, code 1.2"*.
 
 ---
 

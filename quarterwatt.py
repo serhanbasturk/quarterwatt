@@ -1145,7 +1145,7 @@ def harmonise_rl(df, label):
         out = pd.Series(np.nan, index=df.index)
         for stat in RL_STAT_ORDER:
             for reg in RL_REGION_ORDER:
-                for c in cols:
+                for c in sorted(cols, key=lambda c: not c.endswith("_EUR_MW_H")):   # per-hour columns first
                     body = c[len(f"{pre}{d}_"):]
                     if not body.startswith(f"{reg}_") or f"_{stat}" not in body.replace("SETTLEMENTCAPACITY", "_SETTLEMENT_CAPACITY"):
                         continue

@@ -19,7 +19,7 @@ a["RL_aFRR_Up_GERMANY_AVERAGE_CAPACITY_PRICE_EUR_MW_H"] = np.where(a.index >= ne
 a["RL_aFRR_Up_GERMANY_SUM_OF_OFFERED_CAPACITY_MW"] = 1000.0
 h = qw.harmonise_rl(a.copy(), "aFRR")
 v = h["RL_CapPrice_aFRR_Up"]
-print("H1 old per hour:", sorted(v[v.index < new_t[0]].unique()), "| new:", sorted(v[v.index >= new_t[0]].unique()),
+print("H1 old per hour:", sorted(float(x) for x in v[v.index < new_t[0]].unique()), "| new:", sorted(float(x) for x in v[v.index >= new_t[0]].unique()),
       "| raw kept:", "RL_aFRR_Up_GERMANY_AVERAGE_CAPACITY_PRICE_EUR_MW" in h.columns)
 
 # ---- H2: FCR German column ends, cross-border continues; DST day 3-h product ----
@@ -31,6 +31,21 @@ f["RL_FCR_Sym_CROSSBORDER_SETTLEMENTCAPACITY_PRICE_EUR_MW"] = 80.0
 g = qw.harmonise_rl(f.copy(), "FCR")["RL_CapPrice_FCR_Sym"]
 dst0 = g.loc[pd.Timestamp("2022-03-27 00:00", tz=TZ)]
 print("H2 before:", g.iloc[0], "| DST 00-04 (3 h):", dst0, "| after German end:", g.iloc[-1])
+
+# ---- H2b: 5-h product in autumn, both units in one row, German FCR price only where it deviates, twice ----
+t = pd.date_range("2021-10-30", "2021-11-02", freq="4h", inclusive="left").tz_localize(TZ)
+e = pd.DataFrame({"RL_aFRR_Down_GERMANY_AVERAGE_CAPACITY_PRICE_EUR_MW": 20.0}, index=t)
+g = qw.harmonise_rl(e.copy(), "aFRR")["RL_CapPrice_aFRR_Down"]
+e["RL_aFRR_Down_GERMANY_AVERAGE_CAPACITY_PRICE_EUR_MW_H"] = 7.0
+both = qw.harmonise_rl(e.copy(), "aFRR")
+fd = pd.DataFrame({"RL_FCR_Sym_CROSSBORDER_SETTLEMENTCAPACITY_PRICE_EUR_MW": 80.0,
+                   "RL_FCR_Sym_GERMANY_SETTLEMENTCAPACITY_PRICE_EUR_MW": np.nan}, index=t)
+fd.iloc[2, 1] = 40.0
+print("H2b DST 00-04 (5 h):", float(g.loc[pd.Timestamp("2021-10-31 00:00", tz=TZ)]), "| per-hour column wins:",
+      sorted(float(x) for x in both["RL_CapPrice_aFRR_Down"].unique()), "| FCR local price:",
+      [float(x) for x in qw.harmonise_rl(fd.copy(), "FCR")["RL_CapPrice_FCR_Sym"].iloc[:4]],
+      "| twice:", both.equals(qw.harmonise_rl(both.copy(), "aFRR")),
+      "| only MIN:", [c for c in qw.harmonise_rl(pd.DataFrame({"RL_mFRR_Up_GERMANY_MIN_CAPACITY_PRICE_EUR_MW_H": 1.0}, index=t), "mFRR").columns if "CapPrice" in c])
 
 # ---- H3: dictionary units and licences --------------------------------------
 cases = ["Elia_netregulationvolume", "Elia_systemimbalance", "Elia_ace", "Elia_imbalanceprice", "Elia_alpha",
@@ -53,6 +68,12 @@ hourly = pd.DataFrame({"P_DA": p15.resample("1h").mean()})
 mon = qw._monthly(hourly, "DE", "M", p15)
 print("H4 Oct neg hours hourly / qh:", mon.loc[0, "neg_price_hours"], mon.loc[0, "neg_price_qh_hours"],
       "| spread hourly / qh:", round(mon.loc[0, "daily_spread_mean"], 2), round(mon.loc[0, "daily_spread_qh_mean"], 2))
+qw.configure("DE")                                          # before the 15-min MTU: hourly prices spread over 4 quarters
+ih = pd.date_range(pd.Timestamp("2024-01-01", tz=TZ), pd.Timestamp("2025-01-01", tz=TZ), freq="1h", inclusive="left")
+ph = pd.DataFrame({"P_DA": np.random.default_rng(1).normal(40, 60, len(ih))}, index=ih)
+my = qw._monthly(ph, "DE", "Y", qw.to_15min(ph)["P_DA"])
+print("H4 hourly era, qh = hourly:", bool((my.neg_price_hours == my.neg_price_qh_hours).all()),
+      float((my.daily_spread_mean - my.daily_spread_qh_mean).abs().max()))
 yr = qw._monthly(hourly, "DE", "Y")
 print("H4 without p15 no qh cols:", "neg_price_qh_hours" not in yr.columns)
 
