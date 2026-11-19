@@ -1,4 +1,9 @@
-# Quarterwatt
+<h1 align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/logo/logo-dark.svg">
+    <img src="docs/logo/logo-light.svg" alt="Quarterwatt" width="420">
+  </picture>
+</h1>
 
 [![tests](https://github.com/serhanbasturk/quarterwatt/actions/workflows/tests.yml/badge.svg)](https://github.com/serhanbasturk/quarterwatt/actions/workflows/tests.yml)
 [![licence: MIT](https://img.shields.io/badge/licence-MIT-blue.svg)](LICENSE)
